@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ask Farmer Bhai</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&family=Handlee&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #f0f4e8;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+        }
+        h1 {
+            text-align: center;
+            color: #4a7c59;
+        }
+        #map {
+            height: 300px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        #location-info {
+            text-align: center;
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 10px;
+        }
+        /* New manual location styles */
+        .manual-location {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 10px;
+        }
+        .manual-location input {
+            flex: 2;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+        .manual-location button {
+            flex: 1;
+            padding: 10px;
+            border-radius: 5px;
+            background: #4a7c59;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        .manual-location button:hover {
+            background: #3a6249;
+        }
+        #chat {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+            background-color: #f9fcf5;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 8px;
+        }
+        .user {
+            background-color: #e3f2fd;
+            text-align: right;
+        }
+        .farmer-bhai {
+            background-color: #e8f5e9;
+        }
+        .input-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        /* Set flex values so that the input box is twice as wide as the language select */
+        #language {
+            flex: 1;
+        }
+        #message {
+            flex: 2;
+        }
+        input, select, button {
+            padding: 10px;
+            border-radius: 5px;
+        }
+        button {
+            background: #4a7c59;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #3a6249;
+        }
+        .speech-btn {
+            cursor: pointer;
+            margin-left: 10px;
+            color: #4a7c59;
+            font-size: 1.2em;
+        }
+        .speech-btn:hover {
+            color: #3a6249;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>
+            <i class="fas fa-tractor"></i> Ask Farmer Bhai <i class="fas fa-seedling"></i>
+        </h1>
+
+        <!-- Map & Location -->
+        <div id="map"></div>
+        <button id="get-location">Get My Location</button>
+        <p id="location-info">Location: Not set</p>
+
+        <!-- New: Manual Location Entry -->
+        <div class="manual-location">
+            <input type="text" id="manual-location" placeholder="Enter location manually" />
+            <button id="set-location"><i class="fas fa-map-marker-alt"></i> Set Location</button>
+        </div>
+
+        <!-- Chat Window -->
+        <div id="chat"></div>
+        <!-- Input group with language select placed next to the textbox -->
+        <div class="input-group">
+            <select id="language">
+                <option value="en">English</option>
+                <option value="hi">हिन्दी (Hindi)</option>
+                <option value="bn">বাংলা (Bengali)</option>
+                <option value="gu">ગુજરાતી (Gujarati)</option>
+                <option value="kn">ಕನ್ನಡ (Kannada)</option>
+                <option value="ml">മലയാളം (Malayalam)</option>
+                <option value="or">ଓଡ଼ିଆ (Odia)</option>
+                <option value="pa">ਪੰਜਾਬੀ (Punjabi)</option>
+                <option value="mr">मराठी (Marathi)</option>
+                <option value="ta">தமிழ் (Tamil)</option>
+                <option value="te">తెలుగు (Telugu)</option>
+            </select>
+            <input type="text" id="message" placeholder="Type your farming question here..." autocomplete="off">
+            <button id="voice-input"><i class="fas fa-microphone"></i></button>
+            <button id="send"><i class="fas fa-paper-plane"></i> Send</button>
+            <button id="reset"><i class="fas fa-sync-alt"></i> Reset</button>
+        </div>
+    </div>
+
+    <script>
+        // Mapping for speech recognition and TTS language codes
+        const langMap = {
+            en: "en-US",
+            hi: "hi-IN",
+            bn: "bn-IN",
+            gu: "gu-IN",
+            kn: "kn-IN",
+            ml: "ml-IN",
+            or: "or-IN",
+            pa: "pa-IN",
+            mr: "mr-IN",
+            ta: "ta-IN",
+            te: "te-IN"
+        };
+
+        // Initialize map using Leaflet
+        let map = L.map('map').setView([20.5937, 78.9629], 5);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+        let marker;
+
+        // "Get My Location" button uses geolocation
+        document.getElementById("get-location").addEventListener("click", function() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(async function(position) {
+                    let lat = position.coords.latitude;
+                    let lon = position.coords.longitude;
+                    let response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`);
+                    let data = await response.json();
+                    let address = data.display_name || "Address not found";
+                    document.getElementById("location-info").innerText = `Location: ${address}`;
+                    $("#message").data("location", address);
+                    if (marker) map.removeLayer(marker);
+                    marker = L.marker([lat, lon]).addTo(map).bindPopup("Your Location").openPopup();
+                    map.setView([lat, lon], 15);
+                }, function(error) {
+                    alert("Location access denied or unavailable.");
+                });
+            } else {
+                alert("Geolocation is not supported by your browser.");
+            }
+        });
+
+        // Allow custom location selection by clicking on the map
+        map.on('click', async function(e) {
+            let lat = e.latlng.lat;
+            let lon = e.latlng.lng;
+            let response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`);
+            let data = await response.json();
+            let address = data.display_name || "Address not found";
+            document.getElementById("location-info").innerText = `Custom Location: ${address}`;
+            $("#message").data("location", address);
+            if (marker) {
+                marker.setLatLng(e.latlng);
+            } else {
+                marker = L.marker(e.latlng).addTo(map);
+            }
+        });
+
+        // New: Manual Location Entry Event
+        $("#set-location").click(async function() {
+            let locationText = $("#manual-location").val().trim();
+            if (locationText === "") {
+                alert("Please enter a location.");
+                return;
+            }
+            let response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locationText)}&format=json`);
+            let data = await response.json();
+            if (data && data.length > 0) {
+                let lat = data[0].lat;
+                let lon = data[0].lon;
+                let displayName = data[0].display_name;
+                $("#location-info").text(`Custom Location: ${displayName}`);
+                $("#message").data("location", displayName);
+                if (marker) {
+                    marker.setLatLng([lat, lon]);
+                } else {
+                    marker = L.marker([lat, lon]).addTo(map);
+                }
+                map.setView([lat, lon], 15);
+            } else {
+                alert("Location not found. Please try a different query.");
+            }
+        });
+
+        // Function to send message; preserves Enter-key submission and textbox clearing.
+        function sendMessage() {
+            let message = $("#message").val();
+            let language = $("#language").val();
+            let location = $("#message").data("location") || "Unknown location";
+            if (message.trim() === "") {
+                alert("Please enter a question.");
+                return;
+            }
+            $("#chat").append(`<div class="message user"><strong>You:</strong> ${message}</div>`);
+            $("#message").val("");
+            $.ajax({
+                url: "/chat",
+                type: "POST",
+                contentType: "application/json",
+                data: JSON.stringify({ message: message, language: language, location: location }),
+                success: function(data) {
+                    $("#chat").append(`
+                        <div class="message farmer-bhai">
+                            <strong>Farmer Bhai:</strong> ${data.message}
+                            <i class="fas fa-volume-up speech-btn" data-text="${data.message}"></i>
+                        </div>
+                    `);
+                },
+                error: function() {
+                    $("#chat").append(`<div class="message farmer-bhai"><strong>Error:</strong> Something went wrong.</div>`);
+                }
+            });
+        }
+
+        // Bind send button and Enter key to sendMessage
+        $("#send").click(function() {
+            sendMessage();
+        });
+        $("#message").keypress(function(e) {
+            if (e.which === 13) {
+                sendMessage();
+            }
+        });
+
+        // Reset button: Clears chat window, resets input field, and cancels any ongoing speech synthesis.
+        $("#reset").click(function() {
+            $("#chat").empty();
+            $("#message").val("");
+            if (window.speechSynthesis.speaking) {
+                window.speechSynthesis.cancel();
+            }
+        });
+
+        // Speech Recognition (Voice Input)
+        let recognition = null;
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+            recognition.continuous = false;
+            recognition.interimResults = false;
+            recognition.onresult = function(event) {
+                $("#message").val(event.results[0][0].transcript);
+            };
+            recognition.onerror = function() {
+                alert("Speech recognition error.");
+            };
+        }
+        $("#voice-input").click(function() {
+            if (recognition) {
+                let selectedLang = $("#language").val();
+                recognition.lang = langMap[selectedLang] || "en-US";
+                recognition.start();
+            } else {
+                alert("Speech recognition not supported.");
+            }
+        });
+
+        // Text-to-Speech: Click on the speaker icon to read out the response.
+        $(document).on("click", ".speech-btn", function() {
+            let text = $(this).data("text");
+            let selectedLang = $("#language").val();
+            let utterance = new SpeechSynthesisUtterance(text);
+            // Set the TTS language using the mapping
+            utterance.lang = langMap[selectedLang] || "en-US";
+            window.speechSynthesis.speak(utterance);
+        });
+    </script>
+</body>
+</html>
